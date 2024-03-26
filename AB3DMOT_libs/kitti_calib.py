@@ -27,9 +27,9 @@ class Calibration(object):
         Points in <lidar>.bin are in Velodyne coord.
 
         y_image2 = P^2_rect * x_rect
-        y_image2 = P^2_rect * R0_rect * Tr_velo_to_cam * x_velo
-        x_ref = Tr_velo_to_cam * x_velo
-        x_rect = R0_rect * x_ref
+        y_image2 = P^2_rect * R_rect * Tr_velo_cam * x_velo
+        x_ref = Tr_velo_cam * x_velo
+        x_rect = R_rect * x_ref
 
         P^2_rect = [f^2_u,  0,      c^2_u,  -f^2_u b^2_x;
                     0,      f^2_v,  c^2_v,  -f^2_v b^2_y;
@@ -61,17 +61,17 @@ class Calibration(object):
         self.P = np.reshape(self.P, [3,4])
 
         # Rigid transform from Velodyne coord to reference camera coord
-        self.V2C = calibs['Tr_velo_to_cam']
+        self.V2C = calibs['Tr_velo_cam']
         self.V2C = np.reshape(self.V2C, [3,4])
         self.V2C_R = self.V2C[:3, :3]
         self.V2C_T = self.V2C[:, 3]
         self.C2V = inverse_rigid_trans(self.V2C)
         
         # Rotation from reference camera coord to rect camera coord
-        self.R0 = calibs['R0_rect']
+        self.R0 = calibs['R_rect']
         self.R0 = np.reshape(self.R0,[3,3])
 
-        self.I2V = calibs['Tr_imu_to_velo']  # 3 x 4
+        self.I2V = calibs['Tr_imu_velo']  # 3 x 4
         self.I2V = np.reshape(self.I2V, [3,4])
         self.V2I = inverse_rigid_trans(self.I2V)
 
@@ -92,7 +92,10 @@ class Calibration(object):
             for line in f.readlines():
                 line = line.rstrip()
                 if len(line)==0: continue
+                # if ':' not in line: continue  #EZ Check if line is empty or missing a colon  # Skip this line
                 key, value = line.split(':', 1)
+                print(line.split(':', 1))
+                # key, value = line.split(':', 1)
                 # The only non-float values in these files are dates, which
                 # we don't care about anyway
                 try:
@@ -109,11 +112,11 @@ class Calibration(object):
         data = {}
         cam2cam = self.read_calib_file(os.path.join(calib_root_dir, 'calib_cam_to_cam.txt'))
         velo2cam = self.read_calib_file(os.path.join(calib_root_dir, 'calib_velo_to_cam.txt'))
-        Tr_velo_to_cam = np.zeros((3,4))
-        Tr_velo_to_cam[0:3,0:3] = np.reshape(velo2cam['R'], [3,3])
-        Tr_velo_to_cam[:,3] = velo2cam['T']
-        data['Tr_velo_to_cam'] = np.reshape(Tr_velo_to_cam, [12])
-        data['R0_rect'] = cam2cam['R_rect_00']
+        Tr_velo_cam = np.zeros((3,4))
+        Tr_velo_cam[0:3,0:3] = np.reshape(velo2cam['R'], [3,3])
+        Tr_velo_cam[:,3] = velo2cam['T']
+        data['Tr_velo_cam'] = np.reshape(Tr_velo_cam, [12])
+        data['R_rect'] = cam2cam['R_rect_00']
         data['P2'] = cam2cam['P_rect_02']
         return data
 

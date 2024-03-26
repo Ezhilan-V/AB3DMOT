@@ -36,7 +36,11 @@ def get_subfolder_seq(dataset, split):
 		hw = {'image': (375, 1242), 'lidar': (720, 1920)}
 		
 		if split == 'train': seq_eval = ['0000', '0002', '0003', '0004', '0005', '0007', '0009', '0011', '0017', '0020']         # train
-		if split == 'val':   seq_eval = ['0001', '0006', '0008', '0010', '0012', '0013', '0014', '0015', '0016', '0018', '0019']    # val
+		if split == 'val':   seq_eval = ['0000', '0006', '0008', '0010', '0012', '0013', '0014', '0015', '0016', '0018', '0019']    # val
+
+		
+		# if split == 'train': seq_eval = ['0000']         # train
+		# if split == 'val':   seq_eval = ['0000']    # val
 		if split == 'test':  seq_eval  = ['%04d' % i for i in range(29)]
 	
 		data_root = os.path.join(file_path, '../data/KITTI') 		# path containing the KITTI root 

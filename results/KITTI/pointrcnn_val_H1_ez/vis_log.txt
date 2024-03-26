@@ -1,0 +1,2 @@
+seq 0000, number of images to visualize is 154
+processing index: 0, 1/154, results from /home/ez/Project/AB3DMOT/scripts/post_processing/../../results/KITTI/pointrcnn_val_H1_ez/trk_withid_0/0000/000000.txt

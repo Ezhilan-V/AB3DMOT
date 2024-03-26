@@ -1,10 +1,13 @@
 import numpy as np, json
 from numba import jit
 from xinshuo_io import fileparts
+from numba import typed, float64
 
 @jit
 def rotx(t):
     """Rotation about the x-axis."""
+
+    # t = np.float64(t)  # Explicit conversion to float64
     c = np.cos(t)
     s = np.sin(t)
     return np.array([[1,  0,  0],
@@ -14,15 +17,20 @@ def rotx(t):
 @jit
 def roty(t):
     """Rotation about the y-axis."""
+
+    # t = np.float64(t)  # Explicit conversion to float64
     c = np.cos(t)
     s = np.sin(t)
     return np.array([[c,  0,  s],
                      [0,  1,  0],
                      [-s, 0,  c]])
 
+#@jit(float64[:, :](float64), nopython=True)
 @jit
 def rotz(t):
     """Rotation about the z-axis."""
+
+    # t = np.float64(t)  # Explicit conversion to float64
     c = np.cos(t)
     s = np.sin(t)
     return np.array([[c, -s,  0],
@@ -38,19 +46,26 @@ def transform_from_rot_trans(R, t):
 
 @jit
 def _poses_from_oxts(oxts_packets):
-
     """Helper method to compute SE(3) pose matrices from OXTS packets."""
     # https://github.com/pratikac/kitti/blob/master/pykitti/raw.py
-        
+    print(oxts_packets)
+    print("inside poses from oxts")
     er = 6378137.  # earth radius (approx.) in meters
-
     # compute scale from first lat value
     scale = np.cos(oxts_packets[0].lat * np.pi / 180.)
 
-    t_0 = []    # initial position
+    t_0 =  []  # initial position
     poses = []  # list of poses computed from oxts
+    # new_pose = np.array([1.0, 2.0, 3.0], dtype=np.float64)  # Example pose
+
+
+# Initialize an empty typed list expected to hold float64 arrays
+    # poses = typed.List.empty_list(float64[:,:]) #sEZ
+    print(oxts_packets)
     for packet in oxts_packets:
+        print(type(packet))
         # Use a Mercator projection to get the translation vector
+        print(packet)
         tx = scale * packet.lon * np.pi * er / 180.
         ty = scale * er * \
             np.log(np.tan((90. + packet.lat) * np.pi / 360.))
@@ -63,6 +78,9 @@ def _poses_from_oxts(oxts_packets):
             t_0 = t
 
         # Use the Euler angles to get the rotation matrix
+        # Rx = rotx(np.float64(packet.roll))
+        # Ry = roty(np.float64(packet.pitch))
+        # Rz = rotz(np.float64(packet.yaw))
         Rx = rotx(packet.roll)
         Ry = roty(packet.pitch)
         Rz = rotz(packet.yaw)
@@ -70,6 +88,16 @@ def _poses_from_oxts(oxts_packets):
 
         # Combine the translation and rotation into a homogeneous transform
         poses.append(transform_from_rot_trans(R, t - t_0))      # store transformation matrix
+        # new_pose = np.array(transform_from_rot_trans(R, t - t_0), dtype=np.float64)  #EZ
+        # new_pose = np.array(transform_from_rot_trans(R, t - t_0), dtype=np.float64).reshape(4, 4)
+        # print(transform_from_rot_trans(R, t - t_0))
+        # print(transform_from_rot_trans(R, t - t_0).shape)
+        # pose_matrix = transform_from_rot_trans(R, t - t_0)  # This should return a 4x4 numpy array
+        # if pose_matrix.shape == (4, 4) and pose_matrix.dtype == np.float64:
+            # poses.append(pose_matrix)
+        # else:
+            # raise ValueError("Incorrect pose matrix shape or type")
+        # poses.append(pose_matrix)  #EZ
 
     return np.stack(poses)
 
@@ -104,11 +132,11 @@ def load_oxts(oxts_file):
             # Last five entries are flags and counts
             line[:-5] = [float(x) for x in line[:-5]]
             line[-5:] = [int(float(x)) for x in line[-5:]]
-
             data = OxtsPacket(*line)
             oxts_packets.append(data)
 
     # Precompute the IMU poses in the world frame
+    # print(oxts_packets)
     imu_poses = _poses_from_oxts(oxts_packets)      # seq_frames x 4 x 4
 
     return imu_poses
@@ -117,10 +145,17 @@ def get_ego_traj(imu_poses, frame, pref, futf, inverse=False, only_fut=False):
     # compute the motion of the ego vehicle for ego-motion compensation
     # using the current frame as the coordinate
     # current frame means one frame prior to future, and also the last frame of the past
-    
     # compute the start and end frame to retrieve the imu poses
+    print("checking 123",imu_poses)
     num_frames = imu_poses.shape[0]
+    # if frame == num_frames:
+    #     frame = frame - 1
+    print("Frame:", frame, "Num Frames:", num_frames,'\n')
+    print("")
     assert frame >= 0 and frame <= num_frames - 1, 'error'
+    # if frame >= 0 and frame <= num_frames -1:
+    #     # return all_xyz, all_rot_list, left, right
+    #     return
     if inverse:             # pre and fut are inverse, i.e., inverse ego motion compensation
         start = min(frame+pref-1, num_frames-1)
         end   = max(frame-futf-1, -1)
@@ -136,6 +171,7 @@ def get_ego_traj(imu_poses, frame, pref, futf, inverse=False, only_fut=False):
 
     # compute relative transition compared to the current frame of the ego
     all_world_xyz = imu_poses[index, :3, 3]    # N x 3, only translation, frame = 10-19 for fut only (0-19 for all)
+    print(imu_poses[0])
     cur_world_xyz = imu_poses[frame]                        # 4 x 4, frame = 9
     T_world2imu   = np.linalg.inv(cur_world_xyz)            
     all_world_hom = np.concatenate((all_world_xyz, np.ones((all_world_xyz.shape[0], 1))), axis=1)       # N x 4
@@ -143,7 +179,7 @@ def get_ego_traj(imu_poses, frame, pref, futf, inverse=False, only_fut=False):
 
     # compute relative rotation compared to the current frame of the ego
     all_world_rot = imu_poses[index, :3, :3]   # N x 3 x 3, only rotation
-    cur_world_rot = imu_poses[frame, :3, :3]                # 3 x 3, frame = 9
+    cur_world_rot = imu_poses[frame-1, :3, :3]                # 3 x 3, frame = 9
     T_world2imu_rot = np.linalg.inv(cur_world_rot)        
     all_rot_list = list()
     for frame in range(all_world_rot.shape[0]):
@@ -162,14 +198,25 @@ def egomotion_compensation_ID(traj_id, calib, ego_rot_imu, ego_xyz_imu, left, ri
 
     # convert trajectory data from rect to IMU for ego-motion compensation
     traj_id_imu = calib.rect_to_imu(traj_id)        # less_pre x 3
-
+    if not ego_rot_imu:
+    # Handle the case where ego_rot_imu is empty
+        traj_id_rect = calib.imu_to_rect(traj_id_imu)
+        return traj_id_rect
+    print("ego")
+    print(ego_rot_imu)
     if mask is not None:
         good_index = np.where(mask == 1)[0]
         good_index = (good_index - left).tolist()
+        print("Length of ego_rot_imu:", len(ego_rot_imu))
         ego_rot_imu = np.array(ego_rot_imu)
+        print("Length of ego_rot_imu:", len(ego_rot_imu))
         ego_rot_imu = ego_rot_imu[good_index, :].tolist()
+        print("Length of ego_rot_imu:", len(ego_rot_imu))
 
     # correct rotation
+    print("Length of ego_rot_imu:", ego_rot_imu)
+    print("Length of traj_id_imu:", traj_id_imu[0].shape)
+
     for frame in range(traj_id_imu.shape[0]):
         traj_id_imu[frame, :] = np.matmul(ego_rot_imu[frame], traj_id_imu[frame, :].reshape((3, 1))).reshape((3, ))
 
